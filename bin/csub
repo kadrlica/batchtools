@@ -1,0 +1,225 @@
+#!/usr/bin/python -uES
+
+############################################################################ 
+#                                                                          # 
+#  A front-end wrapper around 'condor_submit' which mimicks the basic      # 
+#  functionality of 'bsub' for LSF. Currently only works with the          # 
+#  vanilla universe (due to issues in the 'getenv' option).                # 
+#                                                                          # 
+#  NOTE: This uses /usr/bin/python not /usr/bin/env python and the -ES     # 
+#  option for faster startup. Also needs to be compatible with older       # 
+#  versions of python (>2.4.3).                                            # 
+#                                                                          # 
+#  TODO:                                                                   # 
+#  - Work with non-bash shells?                                            # 
+#  - Deal with UPS variables containing spaces                             # 
+#                                                                          # 
+#  @author: Alex Drlica-Wagner <kadrlica@fnal.gov>                         # 
+#                                                                          # 
+############################################################################ 
+__author__ = "Alex Drlica-Wagner"
+__email__ = "kadrlica@fnal.gov"
+
+import imp
+import sys
+import os
+import subprocess
+import optparse
+
+UNIVERSES=['local','vanilla','grid']
+usage = "Usage: %prog [options] command"
+description = "A simple python front-end to condor_submit for submitting jobs to Condor."
+parser = optparse.OptionParser(usage=usage,description=description)
+parser.disable_interspersed_args()
+parser.add_option('-u',dest='universe',default='vanilla',choices=UNIVERSES,
+                  help="Set the universe to which the job is submitted.")
+parser.add_option('-R',dest='require',default=[],action='append',type=str,
+                  help="Specify addditional requirements.")
+parser.add_option('-o',dest='outfile',default=None,type=str,
+                  help="Ouput file")
+#parser.add_option('-e',dest='errfile',default=None,type=str,
+#                  help="Error file")
+parser.add_option('-d','--debug',action='store_true',default=False,
+                  help="Debug execution (don't delete files).")
+parser.add_option('-s','--sleep',default=1,type=float,
+                  help="Time delay before starting the job.")
+(opts, command) = parser.parse_args()
+
+if not len(command):
+    command = raw_input('csub> ')
+cmd=' '.join(command)
+
+pid = os.getpid()
+#pwd = os.environ['PWD'] # Logical path (preserve symlinks)
+pwd = os.getcwd() # Physical path (dereference symlinks)
+path = os.environ['PATH']
+shell = os.environ['SHELL']
+home = os.environ['HOME']
+user = os.environ['USER']
+host = os.environ['HOSTNAME']
+
+condor = os.environ.get('CONDOR_DIR',os.path.join(home,'.condor'))
+if opts.debug: condor = '.'
+if not os.path.exists(condor): os.makedirs(condor)
+
+# If grid, check if directory is writeable by group...
+
+# CD to the working directory
+
+# Need to set OpSys requirements...
+require = os.environ.get('CONDOR_REQUIREMENTS')
+if not require: require = ''
+
+for req in opts.require:
+    if require: require += " && "
+    require += req
+
+# Name all of the condor files
+runfile = os.path.join(condor,'%i.run'%pid)
+subfile = os.path.join(condor,'%i.sub'%pid)
+envfile = os.path.join(condor,'%i.env'%pid)
+if opts.outfile is None: outfile = '/dev/null'
+else: outfile = opts.outfile
+#if opts.errfile is None: errfile = outfile
+#else: errfile = opts.errfile
+errfile = '/dev/null'
+# I've never found the condor log to be useful
+logfile = '/dev/null'
+
+time=r'\tReal time :\t\t\t%e sec.\n\tCPU time :\t\t\t%S sec.\n\tCPU percentage :\t\t%P\n\tMax Memory :\t\t\t%M KB\n\tAverage Memory :\t\t%K KB'
+
+params = dict(shell=shell,pwd=pwd,cmd=cmd,
+              runfile=runfile,subfile=subfile,
+              envfile=envfile,time=time,
+              debug=str(opts.debug).lower())
+
+script = r"""#!%(shell)s
+debug=%(debug)s
+
+runfile=%(runfile)s
+subfile=%(subfile)s
+envfile=%(envfile)s
+source $envfile
+export HOSTNAME=$(hostname)
+export USER=$(id -un)
+
+timefile=$(mktemp)
+export TIME="%(time)s"
+
+cd %(pwd)s
+cmd="%(cmd)s"
+
+/usr/bin/time -o $timefile $(eval $cmd) 2>&1
+
+status=$?
+
+# This is the start of the job summary
+line=$(for i in $(seq 60); do echo -n "-"; done)
+echo -e "\n$line"
+echo "Job <$_CONDOR_CLUSTER_ID.$_CONDOR_PROCESS_ID> was submitted from <$_CONDOR_SUBMIT_HOST> by user <$_CONDOR_OWNER>."
+echo "Job was executed on host <$(hostname)> as user <$(id -un)>."
+echo "<$_CONDOR_JOB_IWD> was used as the initial working directory."
+echo "Results reported at $(date)"
+
+echo -e "\nYour job looked like:\n"
+echo $line
+echo $cmd
+echo -e "$line\n"
+if [ $status -eq 0 ]; then 
+   echo -e "Successfully completed.\n"
+else
+   echo -e "Exited with exit code $status.\n"
+fi
+
+echo -e "Resource usage summary:\n"
+cat $timefile
+echo -e "\nThe output (if any) is above this job summary."
+
+if [ "$debug" = false ] ; then
+   rm -f $runfile $subfile $envfile $timefile
+fi
+
+exit $status
+"""%params
+
+run = open(runfile,'w')
+run.write(script)
+run.close()
+os.chmod(runfile,0755)
+
+subprocess.call("declare -x > %s"%envfile,shell=True)
+
+# Parse the environment
+envlist = []
+"""
+for key,val in os.environ.items():
+    # Condor has trouble parsing semicolons, shell functions
+    if ';' in val: continue
+    if val.startswith('() {'): continue
+    # Problems in environment variables contains spaces
+    if ' ' in val: continue
+    # Alternatively, check for newline
+    if '\n' in val: continue
+    # Double-down on single and double quotes
+    val = val.replace('"','""')
+    val = val.replace("'","''")
+    envlist += ["'%s=%s'"%(key,val)]
+"""
+environment = ' '.join(envlist)
+environment += " '_CONDOR_CLUSTER_ID=$(Cluster)' '_CONDOR_PROCESS_ID=$(Process)' "
+environment += " '_CONDOR_OWNER=%s' '_CONDOR_SUBMIT_HOST=%s' "%(user,host)
+# May need to mess with $HOME...
+# May want to explicitly remove LS_COLORS (reset by bash)
+
+# Create the file to submit the condor job
+# Need to add switch to initial dir
+sub = open(subfile,'w')
+sub.write("universe = %s\n"%opts.universe)
+if opts.universe == 'grid':
+    sub.write("grid_resource = gt2 fnpcosg1.fnal.gov/jobmanager-condor\n")
+sub.write("executable = %s\n"%runfile)
+sub.write("initialdir = %s\n"%pwd)
+#sub.write("remote_initialdir = %s\n"%pwd)
+#sub.write("transfer_executable = false\n")
+sub.write("stream_output = true\n")
+sub.write("stream_error = true\n")
+sub.write("notification = never\n")
+sub.write("next_job_start_delay = %s\n"%opts.sleep)
+sub.write("log = %s\n"%logfile)
+sub.write("output = %s\n"%outfile)
+sub.write("error = %s\n"%errfile)
+if opts.universe == 'vanilla':
+    sub.write("nice_user = true\n")
+if require:
+    sub.write("requirements = %s\n"%require)
+#sub.write("getenv = true\n")
+if environment:
+    sub.write('environment = "%s"\n'%environment)
+sub.write("queue\n")
+sub.close()
+
+if opts.universe == 'local':
+    # Making it look like a condor_submit (confusing?)
+    print "Job submitted to universe <%s>"%(opts.universe)
+    cmd = "%s | tee %s"%(runfile,outfile)
+    proc = subprocess.call(cmd,shell=True)
+else:
+    cmd = "condor_submit %s 2>&1"%subfile
+    #print cmd
+    proc = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE)
+    stdout = proc.stdout.read()
+    if 'ERROR' in stdout or 'WARNING' in stdout:
+        print stdout
+        if not opts.debug:
+            os.remove(runfile);os.remove(subfile);os.remove(envfile)
+        sys.exit(1)
+    else:
+        try: 
+            jobid=int(stdout.split()[-1].strip('.'))
+            print "Job <%s.0> submitted to universe <%s>"%(jobid,opts.universe)
+            sys.exit(0)
+        except ValueError:
+            print stdout
+            if not opts.debug:
+                os.remove(runfile);os.remove(subfile);os.remove(envfile)
+            sys.exit(1)
