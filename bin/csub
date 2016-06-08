@@ -25,24 +25,23 @@ import sys
 import os
 import subprocess
 import optparse
+import socket
 
 UNIVERSES=['local','vanilla','grid']
 usage = "Usage: %prog [options] command"
-description = "A simple python front-end to condor_submit for submitting jobs to Condor."
+description = "A simple python wrapper to condor_submit for submitting jobs to HTCondor."
 parser = optparse.OptionParser(usage=usage,description=description)
 parser.disable_interspersed_args()
 parser.add_option('-u',dest='universe',default='vanilla',choices=UNIVERSES,
-                  help="Set the universe to which the job is submitted.")
+                  help="set the universe to which the job is submitted.")
 parser.add_option('-R',dest='require',default=[],action='append',type=str,
-                  help="Specify addditional requirements.")
+                  help="specify addditional requirements.")
 parser.add_option('-o',dest='outfile',default=None,type=str,
-                  help="Ouput file")
-#parser.add_option('-e',dest='errfile',default=None,type=str,
-#                  help="Error file")
+                  help="ouput file")
 parser.add_option('-d','--debug',action='store_true',default=False,
-                  help="Debug execution (don't delete files).")
+                  help="debug execution.")
 parser.add_option('-s','--sleep',default=1,type=float,
-                  help="Time delay before starting the job.")
+                  help="time delay before starting the job.")
 (opts, command) = parser.parse_args()
 
 if not len(command):
@@ -52,19 +51,19 @@ cmd=' '.join(command)
 pid = os.getpid()
 #pwd = os.environ['PWD'] # Logical path (preserve symlinks)
 pwd = os.getcwd() # Physical path (dereference symlinks)
-path = os.environ['PATH']
+#path = os.environ['PATH']
 shell = os.environ['SHELL']
 home = os.environ['HOME']
 user = os.environ['USER']
-host = os.environ['HOSTNAME']
+#host = os.environ['HOSTNAME'] # doesn't work for cron
+host = socket.gethostname() # works for cron
 
 condor = os.environ.get('CONDOR_DIR',os.path.join(home,'.condor'))
 if opts.debug: condor = '.'
 if not os.path.exists(condor): os.makedirs(condor)
 
 # If grid, check if directory is writeable by group...
-
-# CD to the working directory
+# cd to the working directory...
 
 # Need to set OpSys requirements...
 require = os.environ.get('CONDOR_REQUIREMENTS')
@@ -78,10 +77,8 @@ for req in opts.require:
 runfile = os.path.join(condor,'%i.run'%pid)
 subfile = os.path.join(condor,'%i.sub'%pid)
 envfile = os.path.join(condor,'%i.env'%pid)
-if opts.outfile is None: outfile = '/dev/null'
+if not opts.outfile: outfile = '/dev/null'
 else: outfile = opts.outfile
-#if opts.errfile is None: errfile = outfile
-#else: errfile = opts.errfile
 errfile = '/dev/null'
 # I've never found the condor log to be useful
 logfile = '/dev/null'
@@ -109,7 +106,7 @@ export TIME="%(time)s"
 cd %(pwd)s
 cmd="%(cmd)s"
 
-/usr/bin/time -o $timefile $(eval $cmd) 2>&1
+/usr/bin/time -o $timefile sh -c "$cmd" 2>&1
 
 status=$?
 
@@ -147,9 +144,8 @@ run.write(script)
 run.close()
 os.chmod(runfile,0755)
 
-subprocess.call("declare -x > %s"%envfile,shell=True)
-
 # Parse the environment
+subprocess.call("declare -x > %s"%envfile,shell=True)
 envlist = []
 """
 for key,val in os.environ.items():
@@ -200,12 +196,12 @@ sub.close()
 
 if opts.universe == 'local':
     # Making it look like a condor_submit (confusing?)
-    print "Job submitted to universe <%s>"%(opts.universe)
+    jobid = pid
+    print "Job <%s.0> submitted to universe <%s>"%(jobid,opts.universe)
     cmd = "%s | tee %s"%(runfile,outfile)
     proc = subprocess.call(cmd,shell=True)
 else:
     cmd = "condor_submit %s 2>&1"%subfile
-    #print cmd
     proc = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE)
     stdout = proc.stdout.read()
     if 'ERROR' in stdout or 'WARNING' in stdout:
@@ -217,9 +213,9 @@ else:
         try: 
             jobid=int(stdout.split()[-1].strip('.'))
             print "Job <%s.0> submitted to universe <%s>"%(jobid,opts.universe)
-            sys.exit(0)
         except ValueError:
             print stdout
             if not opts.debug:
                 os.remove(runfile);os.remove(subfile);os.remove(envfile)
             sys.exit(1)
+sys.exit(0)

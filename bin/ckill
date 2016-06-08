@@ -1,0 +1,74 @@
+#!/usr/bin/python -uES
+
+############################################################################ 
+#                                                                          # 
+#  A front-end wrapper around 'condor_rm' which mimicks the basic          # 
+#  functionality of 'bkill' for LSF. Currently only works with the         # 
+#  vanilla universe (due to issues in the 'getenv' option).                # 
+#                                                                          # 
+#  NOTE: This uses /usr/bin/python not /usr/bin/env python and the -ES     # 
+#  option for faster startup. Also needs to be compatible with older       # 
+#  versions of python (>2.4.3).                                            # 
+#                                                                          # 
+#  TODO:                                                                   # 
+#                                                                          # 
+#  @author: Alex Drlica-Wagner <kadrlica@fnal.gov>                         # 
+#                                                                          # 
+############################################################################ 
+__author__ = "Alex Drlica-Wagner"
+__email__ = "kadrlica@fnal.gov"
+
+import os
+import sys
+import subprocess
+import optparse
+
+CMD = 'condor_rm'
+UNIVERSES=['local','vanilla','grid']
+usage = "Usage: %prog [options] [jobId]..."
+description = "A simple python wrapper around `condor_rm` for removing jobs from HTCondor."
+parser = optparse.OptionParser(usage=usage,description=description)
+parser.disable_interspersed_args()
+parser.add_option('-u',dest='universe',default='vanilla',choices=UNIVERSES,
+    help="set the universe to which the job is submitted.")
+parser.add_option('-a','--all', action='store_true',default=False,
+    help="remove all jobs")
+parser.add_option('-r','--running', action='store_true',
+    help="remove running jobs")
+parser.add_option('-p','--pending',action='store_true',
+    help="remove pending jobs")
+parser.add_option('-d','--debug',action='store_true',
+    help="debug execution")
+parser.add_option('-v','--verbose',action='store_true',
+    help="verbose output")
+(opts, args) = parser.parse_args()
+
+if opts.debug: opts.verbose = True
+    
+cmd = CMD
+
+if (args == ['0']) or (opts.all):
+    cmd += ' -all'
+else:
+    if opts.running:
+        cmd += " -constraint 'JobStatus == 5'"
+    if opts.pending:
+        cmd += " -constraint 'JobStatus =!= 2'"
+    cmd += ' '+' '.join(args)
+
+if cmd == CMD:
+    parser.print_help()
+    sys.exit(1)
+
+if opts.verbose: print cmd
+    
+if opts.debug:
+    status = 0
+else:
+    proc = subprocess.Popen(cmd,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)
+    stdout,stderr = proc.communicate()
+    status = proc.poll()
+    if stdout: print stdout.strip()
+    if stderr: print stderr.strip()
+
+sys.exit(status)
