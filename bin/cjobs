@@ -1,0 +1,88 @@
+#!/usr/bin/python -uES
+
+############################################################################ 
+#                                                                          # 
+#  A front-end wrapper around 'condor_q' which mimicks the basic           # 
+#  functionality of 'bjobs' for LSF. Currently only works with the         # 
+#  vanilla universe (due to issues in the 'getenv' option).                # 
+#                                                                          # 
+#  NOTE: This uses /usr/bin/python not /usr/bin/env python and the -ES     # 
+#  option for faster startup. Also needs to be compatible with older       # 
+#  versions of python (>2.4.3).                                            # 
+#                                                                          # 
+#  TODO:                                                                   # 
+#                                                                          # 
+#  @author: Alex Drlica-Wagner <kadrlica@fnal.gov>                         # 
+#                                                                          # 
+############################################################################ 
+__author__ = "Alex Drlica-Wagner"
+__email__ = "kadrlica@fnal.gov"
+
+import os
+import sys
+import subprocess
+import optparse
+import getpass
+
+# https://htcondor-wiki.cs.wisc.edu/index.cgi/wiki?p=MagicNumbers
+JobStatus = dict([
+        ('unexpanded',0),
+        ('idle',1),
+        ('running',2),
+        ('removed',3),
+        ('completed',4),
+        ('held',5),
+        ('transfer',6),
+        ('suspended',7),
+        ])
+
+CMD = 'condor_q'
+UNIVERSES=['local','vanilla','grid']
+usage = "Usage: %prog [options] [jobId]..."
+description = "A simple python wrapper around `condor_q` for accessing job information from HTCondor."
+parser = optparse.OptionParser(usage=usage,description=description)
+parser.disable_interspersed_args()
+parser.add_option('-q',dest='universe',default='vanilla',choices=UNIVERSES,
+    help="set the universe to which the job is submitted")
+parser.add_option('-u','--user',default=getpass.getuser(),
+    help="specify username")
+parser.add_option('-r','--running', action='store_true',
+    help="running jobs")
+parser.add_option('-p','--pending',dest='idle',action='store_true',
+    help="pending (idle) jobs")
+parser.add_option('-s','--suspend',dest='held',action='store_true',
+    help="held or suspended jobs")
+parser.add_option('-d','--debug',action='store_true',
+    help="debug execution")
+parser.add_option('-v','--verbose',action='store_true',
+    help="verbose output")
+(opts, args) = parser.parse_args()
+
+if opts.debug: opts.verbose = True
+    
+cmd = CMD
+
+if opts.user: 
+    cmd += " %s"%opts.user
+
+jobstatus = []
+if opts.idle:  jobstatus += [JobStatus['idle']]
+if opts.running:  jobstatus += [JobStatus['running']]
+if opts.held:  jobstatus += [JobStatus['held'],JobStatus['suspended']]
+
+if jobstatus:        
+    jobstr = ['JobStatus == %s'%i for i in jobstatus]
+    cmd += " -constraint '%s'"%("||".join(jobstr))
+
+if opts.verbose: print cmd
+    
+if opts.debug:
+    status = 0
+else:
+    proc = subprocess.Popen(cmd,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)
+    stdout,stderr = proc.communicate()
+    status = proc.poll()
+    if stdout: print stdout.strip()
+    if stderr: print stderr.strip()
+
+sys.exit(status)
