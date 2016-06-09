@@ -32,11 +32,13 @@ parser.disable_interspersed_args()
 parser.add_option('-u',dest='universe',default='vanilla',choices=UNIVERSES,
     help="set the universe to which the job is submitted.")
 parser.add_option('-a','--all', action='store_true',default=False,
-    help="remove all jobs")
+    help="all jobs")
 parser.add_option('-r','--running', action='store_true',
-    help="remove running jobs")
+    help="running jobs")
 parser.add_option('-p','--pending',action='store_true',
-    help="remove pending jobs")
+    help="pending (idle) jobs")
+parser.add_option('-s','--suspend',action='store_true',
+    help="suspended (held) jobs")
 parser.add_option('-d','--debug',action='store_true',
     help="debug execution")
 parser.add_option('-v','--verbose',action='store_true',
@@ -47,20 +49,24 @@ if opts.debug: opts.verbose = True
     
 cmd = CMD
 
+jobstatus = []
+if opts.pending: jobstatus += [1]
+if opts.running: jobstatus += [2]
+if opts.suspend: jobstatus += [5,7]
+if jobstatus:        
+    jobstr = ["JobStatus == %s"%i for i in jobstatus]
+    cmd += " -constraint '%s'"%('||'.join(jobstr))
+
 if (args == ['0']) or (opts.all):
     cmd += ' -all'
 else:
-    if opts.running:
-        cmd += " -constraint 'JobStatus == 5'"
-    if opts.pending:
-        cmd += " -constraint 'JobStatus =!= 2'"
     cmd += ' '+' '.join(args)
+ 
+if opts.verbose: print cmd
 
 if cmd == CMD:
     parser.print_help()
     sys.exit(1)
-
-if opts.verbose: print cmd
     
 if opts.debug:
     status = 0
@@ -70,5 +76,5 @@ else:
     status = proc.poll()
     if stdout: print stdout.strip()
     if stderr: print stderr.strip()
-
+ 
 sys.exit(status)

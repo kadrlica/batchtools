@@ -20,12 +20,13 @@
 __author__ = "Alex Drlica-Wagner"
 __email__ = "kadrlica@fnal.gov"
 
-import imp
+#import imp
 import sys
 import os
 import subprocess
 import optparse
 import socket
+import getpass
 
 UNIVERSES=['local','vanilla','grid']
 usage = "Usage: %prog [options] command"
@@ -39,9 +40,11 @@ parser.add_option('-R',dest='require',default=[],action='append',type=str,
 parser.add_option('-o',dest='outfile',default=None,type=str,
                   help="ouput file")
 parser.add_option('-d','--debug',action='store_true',default=False,
-                  help="debug execution.")
+                  help="debug execution")
 parser.add_option('-s','--sleep',default=1,type=float,
-                  help="time delay before starting the job.")
+                  help="time delay before starting the job")
+parser.add_option('-n','--njobs',default=None,type=int,
+                  help="maximum number of concurrent jobs")
 (opts, command) = parser.parse_args()
 
 if not len(command):
@@ -54,7 +57,7 @@ pwd = os.getcwd() # Physical path (dereference symlinks)
 #path = os.environ['PATH']
 shell = os.environ['SHELL']
 home = os.environ['HOME']
-user = os.environ['USER']
+user = getpass.getuser()
 #host = os.environ['HOSTNAME'] # doesn't work for cron
 host = socket.gethostname() # works for cron
 
@@ -184,6 +187,11 @@ sub.write("next_job_start_delay = %s\n"%opts.sleep)
 sub.write("log = %s\n"%logfile)
 sub.write("output = %s\n"%outfile)
 sub.write("error = %s\n"%errfile)
+if opts.njobs:
+    # Better to get this dynamically
+    #condor_config_val -dump | grep CONCURRENCY_LIMIT_DEFAULT
+    default_limit = 2308032
+    sub.write("concurrency_limits = %s:%i\n"%(user,default_limit//opts.njobs))
 if opts.universe == 'vanilla':
     sub.write("nice_user = true\n")
 if require:
