@@ -109,7 +109,7 @@ export TIME="%(time)s"
 cd %(pwd)s
 cmd="%(cmd)s"
 
-/usr/bin/time -o $timefile sh -c "$cmd" 2>&1
+/usr/bin/time -o $timefile nice sh -c "$cmd" 2>&1
 
 status=$?
 
@@ -147,7 +147,7 @@ run.write(script)
 run.close()
 os.chmod(runfile,0755)
 
-# Parse the environment
+# Parse the environment (for grid jobs)
 subprocess.call("declare -x > %s"%envfile,shell=True)
 envlist = []
 """
