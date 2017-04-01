@@ -54,6 +54,8 @@ parser.add_option('-s','--suspend',dest='held',action='store_true',
     help="held or suspended jobs")
 parser.add_option('-d','--debug',action='store_true',
     help="debug execution")
+parser.add_option('-l','--long',action='store_true',
+    help="long output")
 parser.add_option('-v','--verbose',action='store_true',
     help="verbose output")
 (opts, args) = parser.parse_args()
@@ -73,6 +75,8 @@ if opts.held:  jobstatus += [JobStatus['held'],JobStatus['suspended']]
 if jobstatus:        
     jobstr = ['JobStatus == %s'%i for i in jobstatus]
     cmd += " -constraint '%s'"%("||".join(jobstr))
+
+if opts.long: cmd += " -l"
 
 if opts.verbose: print cmd
     
