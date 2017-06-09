@@ -20,13 +20,13 @@
 __author__ = "Alex Drlica-Wagner"
 __email__ = "kadrlica@fnal.gov"
 
-#import imp
 import sys
 import os
 import subprocess
 import optparse
 import socket
 import getpass
+from datetime import datetime
 
 UNIVERSES=['local','vanilla','grid']
 usage = "Usage: %prog [options] command"
@@ -151,6 +151,7 @@ os.chmod(runfile,0755)
 subprocess.call("declare -x > %s"%envfile,shell=True)
 envlist = []
 """
+# This is some fancy stuff to deal with eups problems
 for key,val in os.environ.items():
     # Condor has trouble parsing semicolons, shell functions
     if ';' in val: continue
@@ -202,10 +203,13 @@ if environment:
 sub.write("queue\n")
 sub.close()
 
+outstr = "[%s] Job <%s.0> submitted to universe <%s>"
+time = datetime.now().strftime('%Y/%m/%d %H:%M:%S')
 if opts.universe == 'local':
-    # Making it look like a condor_submit (confusing?)
+    # Making it look like a condor_submit (is this confusing?)
     jobid = pid
-    print "Job <%s.0> submitted to universe <%s>"%(jobid,opts.universe)
+    out = outstr%(time,jobid,opts.universe)
+    print(out)
     cmd = "%s | tee %s"%(runfile,outfile)
     proc = subprocess.call(cmd,shell=True)
 else:
@@ -213,17 +217,18 @@ else:
     proc = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE)
     stdout = proc.stdout.read()
     if 'ERROR' in stdout or 'WARNING' in stdout:
-        print stdout
+        print(stdout)
         if not opts.debug:
-            os.remove(runfile);os.remove(subfile);os.remove(envfile)
+            map(os.remove,[runfile,subfile,envfile])
         sys.exit(1)
     else:
         try: 
-            jobid=int(stdout.split()[-1].strip('.'))
-            print "Job <%s.0> submitted to universe <%s>"%(jobid,opts.universe)
+            jobid = int(stdout.split()[-1].strip('.'))
+            out = outstr%(time,jobid,opts.universe)
+            print(out)
         except ValueError:
             print stdout
             if not opts.debug:
-                os.remove(runfile);os.remove(subfile);os.remove(envfile)
+                map(os.remove,[runfile,subfile,envfile])
             sys.exit(1)
 sys.exit(0)
