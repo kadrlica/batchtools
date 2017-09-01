@@ -33,7 +33,7 @@ usage = "Usage: %prog [options] command"
 description = "A simple python wrapper to condor_submit for submitting jobs to HTCondor."
 parser = optparse.OptionParser(usage=usage,description=description)
 parser.disable_interspersed_args()
-parser.add_option('-u',dest='universe',default='vanilla',choices=UNIVERSES,
+parser.add_option('-u','-q',dest='universe',default='vanilla',choices=UNIVERSES,
                   help="set the universe to which the job is submitted.")
 parser.add_option('-R',dest='require',default=[],action='append',type=str,
                   help="specify addditional requirements.")
