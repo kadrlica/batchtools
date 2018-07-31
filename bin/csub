@@ -35,6 +35,8 @@ parser = optparse.OptionParser(usage=usage,description=description)
 parser.disable_interspersed_args()
 parser.add_option('-u','-q',dest='universe',default='vanilla',choices=UNIVERSES,
                   help="set the universe to which the job is submitted.")
+parser.add_option('--host',default=socket.gethostname(),metavar='host1[,host2,...]',
+                  help="submit to comma-delimited list of hosts")
 parser.add_option('-R',dest='require',default=[],action='append',type=str,
                   help="specify addditional requirements.")
 parser.add_option('-o',dest='outfile',default=None,type=str,
@@ -58,8 +60,8 @@ pwd = os.getcwd() # Physical path (dereference symlinks)
 shell = os.environ['SHELL']
 home = os.environ['HOME']
 user = getpass.getuser()
-#host = os.environ['HOSTNAME'] # doesn't work for cron
-host = socket.gethostname() # works for cron
+#submitter = os.environ['HOSTNAME'] # doesn't work for cron
+submitter = socket.gethostname() # works for cron
 
 condor = os.environ.get('CONDOR_DIR',os.path.join(home,'.condor'))
 if opts.debug: condor = '.'
@@ -75,6 +77,14 @@ if not require: require = ''
 for req in opts.require:
     if require: require += " && "
     require += req
+
+# No constraint on hosts if opts.host empty or contains 'all'
+if opts.host and ('all' not in opts.host): 
+    hosts = ['(Machine == "%s.fnal.gov")'%h.split('.fnal.gov')[0] for h in opts.host.split(',')]
+    hoststr = ' || '.join(hosts)
+
+    if require: require += " && (%s)"%(hoststr)
+    else:       require = hoststr
 
 # Name all of the condor files
 runfile = os.path.join(condor,'%i.run'%pid)
@@ -167,7 +177,7 @@ for key,val in os.environ.items():
 """
 environment = ' '.join(envlist)
 environment += " '_CONDOR_CLUSTER_ID=$(Cluster)' '_CONDOR_PROCESS_ID=$(Process)' "
-environment += " '_CONDOR_OWNER=%s' '_CONDOR_SUBMIT_HOST=%s' "%(user,host)
+environment += " '_CONDOR_OWNER=%s' '_CONDOR_SUBMIT_HOST=%s' "%(user,submitter)
 # May need to mess with $HOME...
 # May want to explicitly remove LS_COLORS (reset by bash)
 
@@ -181,6 +191,7 @@ sub.write("executable = %s\n"%runfile)
 sub.write("initialdir = %s\n"%pwd)
 #sub.write("remote_initialdir = %s\n"%pwd)
 #sub.write("transfer_executable = false\n")
+sub.write("RunAsOwner = true\n")
 sub.write("stream_output = true\n")
 sub.write("stream_error = true\n")
 sub.write("notification = never\n")
@@ -190,7 +201,7 @@ sub.write("output = %s\n"%outfile)
 sub.write("error = %s\n"%errfile)
 if opts.njobs:
     # Better to get this dynamically
-    #condor_config_val -dump | grep CONCURRENCY_LIMIT_DEFAULT
+    #condor_config_val CONCURRENCY_LIMIT_DEFAULT
     default_limit = 2308032
     sub.write("concurrency_limits = %s:%i\n"%(user,default_limit//opts.njobs))
 if opts.universe == 'vanilla':

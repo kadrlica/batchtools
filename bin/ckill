@@ -30,7 +30,9 @@ description = "A simple python wrapper around `condor_rm` for removing jobs from
 parser = optparse.OptionParser(usage=usage,description=description)
 parser.disable_interspersed_args()
 parser.add_option('-u',dest='universe',default='vanilla',choices=UNIVERSES,
-    help="set the universe to which the job is submitted.")
+    help="set the universe to kill from.")
+parser.add_option('--host', default=None, metavar='host1[,host2,...]',
+    help="submit to comma-delimited list of hosts")
 parser.add_option('-a','--all', action='store_true',default=False,
     help="all jobs")
 parser.add_option('-r','--running', action='store_true',
@@ -56,6 +58,13 @@ if opts.suspend: jobstatus += [5,7]
 if jobstatus:        
     jobstr = ["JobStatus == %s"%i for i in jobstatus]
     cmd += " -constraint '%s'"%('||'.join(jobstr))
+
+if opts.host and ('all' not in opts.host): 
+    hosts = []
+    for h in opts.host.split(','):
+        if h.lower()=='none': hosts += ["(RemoteHost =?= UNDEFINED)"]
+        else: hosts+=['regexp("%s.fnal.gov$", RemoteHost)'%h.split('.fnal.gov')[0]]
+    cmd += " -constraint '%s'"%("||".join(hosts))
 
 if (args == ['0']) or (opts.all):
     cmd += ' -all'

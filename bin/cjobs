@@ -36,7 +36,10 @@ JobStatus = dict([
         ('suspended',7),
         ])
 
-CMD = 'condor_q'
+# Formatting the default condor_q output (almost)
+# https://htcondor-wiki.cs.wisc.edu/index.cgi/wiki?p=HowToWriteaCondorqWrapper
+
+CMD = 'condor_q -global'
 UNIVERSES=['local','vanilla','grid']
 usage = "Usage: %prog [options] [jobId]..."
 description = "A simple python wrapper around `condor_q` for accessing job information from HTCondor."
@@ -46,6 +49,8 @@ parser.add_option('-q',dest='universe',default='vanilla',choices=UNIVERSES,
     help="set the universe to which the job is submitted")
 parser.add_option('-u','--user',default=getpass.getuser(),
     help="specify username")
+parser.add_option('--host', default=None, metavar='host1[,host2,...]',
+    help="submit to comma-delimited list of hosts")
 parser.add_option('-r','--running', action='store_true',
     help="running jobs")
 parser.add_option('-p','--pending',dest='idle',action='store_true',
@@ -68,13 +73,20 @@ if opts.user:
     cmd += " %s"%opts.user
 
 jobstatus = []
-if opts.idle:  jobstatus += [JobStatus['idle']]
-if opts.running:  jobstatus += [JobStatus['running']]
-if opts.held:  jobstatus += [JobStatus['held'],JobStatus['suspended']]
+if opts.idle:    jobstatus += [JobStatus['idle']]
+if opts.running: jobstatus += [JobStatus['running']]
+if opts.held:    jobstatus += [JobStatus['held'],JobStatus['suspended']]
 
 if jobstatus:        
-    jobstr = ['JobStatus == %s'%i for i in jobstatus]
+    jobstr = ['(JobStatus == %s)'%i for i in jobstatus]
     cmd += " -constraint '%s'"%("||".join(jobstr))
+
+if opts.host and ('all' not in opts.host): 
+    hosts = []
+    for h in opts.host.split(','):
+        if h.lower()=='none': hosts += ["(RemoteHost =?= UNDEFINED)"]
+        else: hosts+=['regexp("%s.fnal.gov$", RemoteHost)'%h.split('.fnal.gov')[0]]
+    cmd += " -constraint '%s'"%("||".join(hosts))
 
 if opts.long: cmd += " -l"
 
