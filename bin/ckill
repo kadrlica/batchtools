@@ -31,8 +31,8 @@ parser = optparse.OptionParser(usage=usage,description=description)
 parser.disable_interspersed_args()
 parser.add_option('-u',dest='universe',default='vanilla',choices=UNIVERSES,
     help="set the universe to kill from.")
-parser.add_option('--host', default=None, metavar='host1[,host2,...]',
-    help="submit to comma-delimited list of hosts")
+parser.add_option('--host', default='all', metavar='host1[,host2,...]',
+    help="kill from a comma-delimited list of hosts")
 parser.add_option('-a','--all', action='store_true',default=False,
     help="all jobs")
 parser.add_option('-r','--running', action='store_true',

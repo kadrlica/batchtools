@@ -36,7 +36,7 @@ parser.disable_interspersed_args()
 parser.add_option('-u','-q',dest='universe',default='vanilla',choices=UNIVERSES,
                   help="set the universe to which the job is submitted.")
 parser.add_option('--host',default=socket.gethostname(),metavar='host1[,host2,...]',
-                  help="submit to comma-delimited list of hosts")
+                  help="submit to comma-delimited list of hosts or 'all'")
 parser.add_option('-R',dest='require',default=[],action='append',type=str,
                   help="specify addditional requirements.")
 parser.add_option('-o',dest='outfile',default=None,type=str,

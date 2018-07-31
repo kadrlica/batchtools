@@ -49,8 +49,8 @@ parser.add_option('-q',dest='universe',default='vanilla',choices=UNIVERSES,
     help="set the universe to which the job is submitted")
 parser.add_option('-u','--user',default=getpass.getuser(),
     help="specify username")
-parser.add_option('--host', default=None, metavar='host1[,host2,...]',
-    help="submit to comma-delimited list of hosts")
+parser.add_option('--host', default='all', metavar='host1[,host2,...]',
+    help="check jobs from a comma-delimited list of hosts")
 parser.add_option('-r','--running', action='store_true',
     help="running jobs")
 parser.add_option('-p','--pending',dest='idle',action='store_true',
