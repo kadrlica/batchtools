@@ -204,8 +204,9 @@ if opts.njobs:
     #condor_config_val CONCURRENCY_LIMIT_DEFAULT
     default_limit = 2308032
     sub.write("concurrency_limits = %s:%i\n"%(user,default_limit//opts.njobs))
-if opts.universe == 'vanilla':
-    sub.write("nice_user = true\n")
+# No more mister nice guy...
+#if opts.universe == 'vanilla':
+#    sub.write("nice_user = true\n")
 if require:
     sub.write("requirements = %s\n"%require)
 #sub.write("getenv = true\n")
