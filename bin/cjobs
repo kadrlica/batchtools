@@ -23,6 +23,7 @@ import sys
 import subprocess
 import optparse
 import getpass
+import tempfile
 
 # https://htcondor-wiki.cs.wisc.edu/index.cgi/wiki?p=MagicNumbers
 JobStatus = dict([
@@ -36,7 +37,43 @@ JobStatus = dict([
         ('suspended',7),
         ])
 
-# Formatting the default condor_q output (almost)
+# Experimental print format:
+# https://htcondor-wiki.cs.wisc.edu/index.cgi/wiki?p=ExperimentalCustomPrintFormats
+# See source code here:
+# https://github.com/htcondor/htcondor/blob/master/src/condor_utils/make_printmask.cpp
+# https://github.com/htcondor/htcondor/blob/master/src/condor_q.V6/queue.cpp
+
+DEFAULT_FORMAT = """# queue.cpf
+# produce the standard output of condor_q
+SELECT
+   ClusterId     AS " ID"  NOSUFFIX WIDTH 4
+   ProcId        AS " "    NOPREFIX             PRINTF ".%-3d"
+   Owner         AS "OWNER"         WIDTH -14   
+   QDate         AS " SUBMITTED"    WIDTH 11    PRINTAS QDATE
+   {RemoteUserCpu,RemoteWallClockTime,ShadowBday,ServerTime}[0] AS "    RUN_TIME"  WIDTH 12    PRINTAS CPU_TIME
+   JobStatus     AS ST                          PRINTAS JOB_STATUS
+   JobPrio       AS PRI
+   ImageSize     AS SIZE            WIDTH 4     PRINTAS MEMORY_USAGE
+   Cmd           AS CMD             WIDTH -18   PRINTAS JOB_DESCRIPTION
+SUMMARY STANDARD
+"""
+
+CUSTOM_FORMAT = """# produce custom output for cjobs
+SELECT
+   ClusterId     AS " ID"  NOSUFFIX WIDTH 6
+   ProcId        AS " "    NOPREFIX             PRINTF ".%-2d"
+   Owner         AS "OWNER"         WIDTH -10
+   QDate         AS " SUBMITTED"    WIDTH 11    PRINTAS QDATE
+   {RemoteUserCpu,RemoteWallClockTime,ShadowBday,ServerTime}[0] AS "  RUN_TIME"  WIDTH 12    PRINTAS CPU_TIME
+   JobStatus     AS ST                          PRINTAS JOB_STATUS
+   JobPrio       AS PR
+   ImageSize     AS SIZE            WIDTH 4     PRINTAS MEMORY_USAGE
+   ifThenElse(isUndefined(RemoteHost),"",split(RemoteHost,".")[0]) AS HOST
+#   Cmd           AS CMD             WIDTH -18   PRINTAS JOB_DESCRIPTION
+SUMMARY STANDARD
+"""
+
+# Hacking the default condor_q output (almost)
 # https://htcondor-wiki.cs.wisc.edu/index.cgi/wiki?p=HowToWriteaCondorqWrapper
 
 CMD = 'condor_q -global'
@@ -61,6 +98,8 @@ parser.add_option('-d','--debug',action='store_true',
     help="debug execution")
 parser.add_option('-l','--long',action='store_true',
     help="long output")
+parser.add_option('-b','--batch',action='store_true',
+    help="batch output (version >= 8.6)")
 parser.add_option('-v','--verbose',action='store_true',
     help="verbose output")
 (opts, args) = parser.parse_args()
@@ -88,7 +127,15 @@ if opts.host and ('all' not in opts.host):
         else: hosts+=['regexp("%s.fnal.gov$", RemoteHost)'%h.split('.fnal.gov')[0]]
     cmd += " -constraint '%s'"%("||".join(hosts))
 
-if opts.long: cmd += " -l"
+# Formatting
+tmp = tempfile.NamedTemporaryFile(suffix='.cfg')
+tmp.write(CUSTOM_FORMAT)
+tmp.flush()
+
+if opts.batch: cmd += " -batch"
+else: cmd += " -pr " + tmp.name
+
+if opts.long:  cmd += " -l"
 
 if opts.verbose: print cmd
     
@@ -101,4 +148,5 @@ else:
     if stdout: print stdout.strip()
     if stderr: print stderr.strip()
 
+tmp.close()
 sys.exit(status)
