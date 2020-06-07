@@ -47,6 +47,8 @@ parser.add_option('-s','--sleep',default=1,type=float,
                   help="time delay before starting the job")
 parser.add_option('-n','--njobs',default=None,type=int,
                   help="maximum number of concurrent jobs")
+parser.add_option('-W',dest='wallclock',default=None,type=int,
+                  help="maximum wallclock runtime (seconds)")
 (opts, command) = parser.parse_args()
 
 if not len(command):
@@ -113,13 +115,13 @@ source $envfile
 export HOSTNAME=$(hostname)
 export USER=$(id -un)
 
-timefile=$(mktemp)
+timefile=$(mktemp --tmpdir=/tmp)
 export TIME="%(time)s"
 
 cd %(pwd)s
 cmd="%(cmd)s"
 
-/usr/bin/time -o $timefile nice sh -c "$cmd" 2>&1
+/usr/bin/time -o $timefile sh -c "$cmd" 2>&1
 
 status=$?
 
@@ -212,6 +214,8 @@ if require:
 #sub.write("getenv = true\n")
 if environment:
     sub.write('environment = "%s"\n'%environment)
+if opts.wallclock:
+    sub.write('periodic_remove = (RemoteWallClockTime - CumulativeSuspensionTime) > %s\n'%opts.wallclock)
 sub.write("queue\n")
 sub.close()
 
