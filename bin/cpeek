@@ -1,0 +1,83 @@
+#!/usr/bin/python -uES
+
+############################################################################ 
+#                                                                          # 
+#  A wrapper around 'condor_q' and 'tail' which mimicks the basic          # 
+#  functionality of 'bpeek' for LSF. Currently only works with the         # 
+#  vanilla universe (due to local file system).                            # 
+#                                                                          # 
+#  NOTE: This uses /usr/bin/python not /usr/bin/env python and the -ES     # 
+#  option for faster startup. This needed to be compatible with older      # 
+#  versions of python (>2.4.3), which dictated the use of optparse.        # 
+#                                                                          # 
+#  TODO:                                                                   # 
+#                                                                          # 
+#  @author: Alex Drlica-Wagner <kadrlica@fnal.gov>                         # 
+#                                                                          # 
+############################################################################ 
+__author__ = "Alex Drlica-Wagner"
+__email__ = "kadrlica@fnal.gov"
+
+import os
+import sys
+import subprocess
+import optparse
+import getpass
+import tempfile
+
+CMD = 'condor_q -global -l'
+UNIVERSES=['local','vanilla','grid']
+usage = "Usage: %prog [options] [jobId]..."
+description = "A simple wrapper around `condor_q` for tailing log."
+parser = optparse.OptionParser(usage=usage,description=description)
+parser.disable_interspersed_args()
+parser.add_option('-q',dest='universe',default='vanilla',choices=UNIVERSES,
+    help="set the universe to which the job is submitted")
+parser.add_option('-d','--debug',action='store_true',
+    help="debug execution")
+parser.add_option('-f','--follow',action='store_true',
+    help="display output using 'tail -f'")
+parser.add_option('-n','--lines',default=10, type=int,
+    help="number of lines to output")
+parser.add_option('-v','--verbose',action='store_true',
+    help="verbose output")
+(opts, args) = parser.parse_args()
+
+if opts.debug: opts.verbose = True
+    
+cmd = CMD
+# Job ID(s)
+cmd += ' '+' '.join(args)
+
+if opts.verbose: print(cmd)
+proc = subprocess.Popen(cmd,shell=True,
+                        stderr=subprocess.PIPE,stdout=subprocess.PIPE,
+                        universal_newlines=True)
+stdout,stderr = proc.communicate()
+status = proc.poll()
+
+if stderr: print(stderr.strip())
+if stdout:
+    lines = stdout.strip().split('\n')
+    dirname,basename,filename = None,None,None
+    for l in lines:
+        if l.startswith('Iwd = '):
+            dirname = l.split(' ')[-1].strip('"')
+        if l.startswith('Out = '):
+            basename = l.split(' ')[-1].strip('"')
+
+        if dirname and basename:
+            filename = os.path.join(dirname,basename)
+            tail_cmd = "tail -n %s "%(opts.lines)
+            if opts.follow: tail_cmd += '-f '
+            tail_cmd += filename
+            if opts.verbose: print(tail_cmd)
+
+            try:
+                subprocess.call(tail_cmd, shell=True)
+            except KeyboardInterrupt:
+                print("")
+                status = 1
+            dirname,basename,filename = None,None,None
+        
+sys.exit(status)
