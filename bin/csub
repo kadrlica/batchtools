@@ -7,8 +7,8 @@
 #  vanilla universe (due to issues in the 'getenv' option).                # 
 #                                                                          # 
 #  NOTE: This uses /usr/bin/python not /usr/bin/env python and the -ES     # 
-#  option for faster startup. Also needs to be compatible with older       # 
-#  versions of python (>2.4.3).                                            # 
+#  option for faster startup. This needed to be compatible with older      # 
+#  versions of python (>2.4.3), which dictated the use of optparse.        # 
 #                                                                          # 
 #  TODO:                                                                   # 
 #  - Work with non-bash shells?                                            # 
@@ -47,6 +47,8 @@ parser.add_option('-s','--sleep',default=1,type=float,
                   help="time delay before starting the job")
 parser.add_option('-n','--njobs',default=None,type=int,
                   help="maximum number of concurrent jobs")
+parser.add_option('-v','--verbose',action='store_true',default=False,
+                  help="output verbosity")
 parser.add_option('-W',dest='wallclock',default=None,type=int,
                   help="maximum wallclock runtime (seconds)")
 (opts, command) = parser.parse_args()
@@ -54,6 +56,7 @@ parser.add_option('-W',dest='wallclock',default=None,type=int,
 if not len(command):
     command = raw_input('csub> ')
 cmd=' '.join(command)
+if opts.verbose: print("submit: "+cmd)
 
 pid = os.getpid()
 #pwd = os.environ['PWD'] # Logical path (preserve symlinks)
@@ -157,7 +160,7 @@ exit $status
 run = open(runfile,'w')
 run.write(script)
 run.close()
-os.chmod(runfile,0755)
+os.chmod(runfile,0o755)
 
 # Parse the environment (for grid jobs)
 subprocess.call("declare -x > %s"%envfile,shell=True)
@@ -206,7 +209,7 @@ if opts.njobs:
     #condor_config_val CONCURRENCY_LIMIT_DEFAULT
     default_limit = 2308032
     sub.write("concurrency_limits = %s:%i\n"%(user,default_limit//opts.njobs))
-# No more mister nice guy...
+# No more Mr. Nice Guy...
 #if opts.universe == 'vanilla':
 #    sub.write("nice_user = true\n")
 if require:
@@ -230,7 +233,8 @@ if opts.universe == 'local':
     proc = subprocess.call(cmd,shell=True)
 else:
     cmd = "condor_submit %s 2>&1"%subfile
-    proc = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE)
+    proc = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,
+                            universal_newlines=True)
     stdout = proc.stdout.read()
     if 'ERROR' in stdout or 'WARNING' in stdout:
         print(stdout)
@@ -243,7 +247,7 @@ else:
             out = outstr%(time,jobid,opts.universe)
             print(out)
         except ValueError:
-            print stdout
+            print(stdout)
             if not opts.debug:
                 map(os.remove,[runfile,subfile,envfile])
             sys.exit(1)
