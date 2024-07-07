@@ -63,7 +63,7 @@ SUMMARY STANDARD
 
 CUSTOM_FORMAT = """# produce custom output for cjobs
 SELECT
-   ClusterId     AS " ID"  NOSUFFIX WIDTH 6
+   ClusterId     AS "  ID"  NOSUFFIX WIDTH 6
    ProcId        AS " "    NOPREFIX             PRINTF ".%-2d"
    Owner         AS "OWNER"         WIDTH -10
    QDate         AS " SUBMITTED"    WIDTH 11    PRINTAS QDATE
@@ -75,19 +75,21 @@ SELECT
 #   Cmd           AS CMD             WIDTH -18   PRINTAS JOB_DESCRIPTION
 SUMMARY STANDARD
 """
+# To print job batch name
+#   JobBatchName  AS "NAME"         WIDTH -10
 
-CMD = 'condor_q -global'
+CMD = 'condor_q'
 UNIVERSES=['local','vanilla','grid']
 usage = "Usage: %prog [options] [jobId]..."
-description = "A simple python wrapper around `condor_q` for accessing job information from HTCondor."
+description = "A Python wrapper around `condor_q` for accessing job information from HTCondor."
 parser = optparse.OptionParser(usage=usage,description=description)
 parser.disable_interspersed_args()
 parser.add_option('-q',dest='universe',default='vanilla',choices=UNIVERSES,
     help="set the universe to which the job is submitted")
 parser.add_option('-u','--user',default=getpass.getuser(),
     help="specify username")
-parser.add_option('--host', default='all', metavar='host1[,host2,...]',
-    help="check jobs from a comma-delimited list of hosts")
+parser.add_option('--host', default=None,
+    help="check jobs from a specific host or 'all'")
 parser.add_option('-r','--running', action='store_true',
     help="running jobs")
 parser.add_option('-p','--pending',action='store_true',
@@ -100,6 +102,8 @@ parser.add_option('-l','--long',action='store_true',
     help="long output")
 parser.add_option('-b','--batch',action='store_true',
     help="batch output (version >= 8.6)")
+parser.add_option('-J','--batch_name', default=None, type=str,
+    help="jobs that match a specific batch")
 parser.add_option('-v','--verbose',action='store_true',
     help="verbose output")
 (opts, args) = parser.parse_args()
@@ -112,6 +116,10 @@ if opts.user:
     if opts.user=='all': cmd += ' -allusers'
     else: cmd += " %s"%opts.user
 
+if opts.host:
+    if opts.host=='all': cmd += ' -global'
+    else: cmd += " -name %s.fnal.gov"%h.split('.fnal.gov')[0]    
+
 jobstatus = []
 if opts.pending: jobstatus += [JOB_STATUS['idle']]
 if opts.running: jobstatus += [JOB_STATUS['running']]
@@ -120,12 +128,15 @@ if jobstatus:
     jobstr = ['(JobStatus == %s)'%i for i in jobstatus]
     cmd   += " -constraint '%s'"%("||".join(jobstr))
 
-if opts.host and ('all' not in opts.host): 
-    hosts = []
-    for h in opts.host.split(','):
-        if h.lower()=='none': hosts += ["(RemoteHost =?= UNDEFINED)"]
-        else: hosts+=['regexp("%s.fnal.gov$", RemoteHost)'%h.split('.fnal.gov')[0]]
-    cmd += " -constraint '%s'"%("||".join(hosts))
+if opts.batch_name:
+    cmd += " -constraint 'JobBatchName == \"%s\"'"%(opts.batch_name)
+    
+#if opts.host and ('all' not in opts.host): 
+#    hosts = []
+#    for h in opts.host.split(','):
+#        if h.lower()=='none': hosts += ["(RemoteHost =?= UNDEFINED)"]
+#        else: hosts+=['regexp("%s.fnal.gov$", RemoteHost)'%h.split('.fnal.gov')[0]]
+#    cmd += " -constraint '%s'"%("||".join(hosts))
 
 # Formatting
 tmp = tempfile.NamedTemporaryFile(suffix='.cfg',mode='w')

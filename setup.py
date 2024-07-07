@@ -1,7 +1,5 @@
-import sys
-import os
-try: from setuptools import setup
-except ImportError: from distutils.core import setup
+import os,sys
+from setuptools import setup
 import versioneer
 
 URL = 'https://github.com/kadrlica/batchtools'
@@ -13,7 +11,7 @@ setup(
     url=URL,
     author='Alex Drlica-Wagner',
     author_email='kadrlica@fnal.gov',
-    scripts = [],
+    scripts = ['bin/csub','bin/cjobs','bin/ckill','bin/cfail'],
     install_requires=[],
     packages=['batchtools'],
     description="Tools for batch job submission and management.",

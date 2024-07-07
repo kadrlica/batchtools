@@ -29,13 +29,19 @@ import getpass
 from datetime import datetime
 
 UNIVERSES=['local','vanilla','grid']
+
+# It'd be better to get this dynamically
+#condor_config_val CONCURRENCY_LIMIT_DEFAULT
+CONCURRENCY_LIMIT_DEFAULT=2308032
+
 usage = "Usage: %prog [options] command"
-description = "A simple python wrapper to condor_submit for submitting jobs to HTCondor."
+description = "A Python wrapper around condor_submit for submitting jobs to HTCondor."
 parser = optparse.OptionParser(usage=usage,description=description)
 parser.disable_interspersed_args()
 parser.add_option('-u','-q',dest='universe',default='vanilla',choices=UNIVERSES,
                   help="set the universe to which the job is submitted.")
-parser.add_option('--host',default=socket.gethostname(),metavar='host1[,host2,...]',
+parser.add_option('--host',default=socket.gethostname(),type=str,
+                  metavar='host1[,host2,...]',
                   help="submit to comma-delimited list of hosts or 'all'")
 parser.add_option('-R',dest='require',default=[],action='append',type=str,
                   help="specify addditional requirements.")
@@ -51,12 +57,15 @@ parser.add_option('-v','--verbose',action='store_true',default=False,
                   help="output verbosity")
 parser.add_option('-W',dest='wallclock',default=None,type=int,
                   help="maximum wallclock runtime (seconds)")
+parser.add_option('-J','--batch_name', dest='jobname',default=None,type=str,
+                  help="descriptive job name")
+
 (opts, command) = parser.parse_args()
 
+if opts.verbose: print(' '.join(sys.argv))
 if not len(command):
     command = raw_input('csub> ')
 cmd=' '.join(command)
-if opts.verbose: print("submit: "+cmd)
 
 pid = os.getpid()
 #pwd = os.environ['PWD'] # Logical path (preserve symlinks)
@@ -68,9 +77,9 @@ user = getpass.getuser()
 #submitter = os.environ['HOSTNAME'] # doesn't work for cron
 submitter = socket.gethostname() # works for cron
 
-condor = os.environ.get('CONDOR_DIR',os.path.join(home,'.condor'))
-if opts.debug: condor = '.'
-if not os.path.exists(condor): os.makedirs(condor)
+condor_dir = os.environ.get('CONDOR_DIR',os.path.join(home,'.condor'))
+if opts.debug: condor_dir = '.'
+if not os.path.exists(condor_dir): os.makedirs(condor_dir)
 
 # If grid, check if directory is writeable by group...
 # cd to the working directory...
@@ -92,9 +101,9 @@ if opts.host and ('all' not in opts.host):
     else:       require = hoststr
 
 # Name all of the condor files
-runfile = os.path.join(condor,'%i.run'%pid)
-subfile = os.path.join(condor,'%i.sub'%pid)
-envfile = os.path.join(condor,'%i.env'%pid)
+runfile = os.path.join(condor_dir,'%i.run'%pid)
+subfile = os.path.join(condor_dir,'%i.sub'%pid)
+envfile = os.path.join(condor_dir,'%i.env'%pid)
 if not opts.outfile: outfile = '/dev/null'
 else: outfile = opts.outfile
 errfile = '/dev/null'
@@ -107,7 +116,6 @@ params = dict(shell=shell,pwd=pwd,cmd=cmd,
               runfile=runfile,subfile=subfile,
               envfile=envfile,time=time,
               debug=str(opts.debug).lower())
-
 script = r"""#!%(shell)s
 debug=%(debug)s
 
@@ -205,10 +213,8 @@ sub.write("log = %s\n"%logfile)
 sub.write("output = %s\n"%outfile)
 sub.write("error = %s\n"%errfile)
 if opts.njobs:
-    # Better to get this dynamically
-    #condor_config_val CONCURRENCY_LIMIT_DEFAULT
-    default_limit = 2308032
-    sub.write("concurrency_limits = %s:%i\n"%(user,default_limit//opts.njobs))
+    concurrency_limits = CONCURRENCY_LIMIT_DEFAULT//opts.njobs
+    sub.write("concurrency_limits = %s:%i\n"%(user, concurrency_limits))
 # No more Mr. Nice Guy...
 #if opts.universe == 'vanilla':
 #    sub.write("nice_user = true\n")
@@ -219,6 +225,8 @@ if environment:
     sub.write('environment = "%s"\n'%environment)
 if opts.wallclock:
     sub.write('periodic_remove = (RemoteWallClockTime - CumulativeSuspensionTime) > %s\n'%opts.wallclock)
+if opts.jobname:
+    sub.write('batch_name = "%s"\n'%opts.jobname)
 sub.write("queue\n")
 sub.close()
 
@@ -232,7 +240,7 @@ if opts.universe == 'local':
     cmd = "%s | tee %s"%(runfile,outfile)
     proc = subprocess.call(cmd,shell=True)
 else:
-    cmd = "condor_submit %s 2>&1"%subfile
+    cmd = "/usr/bin/condor_submit %s 2>&1"%subfile
     proc = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,
                             universal_newlines=True)
     stdout = proc.stdout.read()
